@@ -1,0 +1,350 @@
+// ============================================================
+// Decant Shared Types
+// ============================================================
+
+// Node types in the hierarchy
+export type NodeType = 'segment' | 'category' | 'content_type' | 'subcategory' | 'item' | 'organization' | 'custom_space';
+
+// Content type codes
+export type ContentTypeCode = 'T' | 'A' | 'V' | 'P' | 'D' | 'C' | 'R'; // Tool, Article, Video, Paper, Documentation, Course, Repository
+
+// Segment codes
+export type SegmentCode = 'A' | 'T' | 'S' | 'R'; // AI, Technology, Science, Resources
+
+// Metadata tag types
+export type MetadataTagType = 'ORG' | 'FNC' | 'TEC' | 'LIC' | 'USR';
+
+// Hierarchy view type
+export type HierarchyView = 'function' | 'organization';
+
+// Processing status
+export type ProcessingStatus = 'pending' | 'processing' | 'complete' | 'failed';
+
+// Gumroad colors
+export type GumroadColor = 'pink' | 'yellow' | 'blue' | 'green';
+
+// ============================================================
+// Core Node Interface
+// ============================================================
+
+export interface Node {
+  id: string;
+  title: string;
+  nodeType: NodeType;
+
+  // Hierarchy codes
+  functionCode: string | null;
+  organizationCode: string | null;
+
+  // Parent references (dual hierarchy)
+  functionParentId: string | null;
+  organizationParentId: string | null;
+
+  // Position in sibling list
+  functionPosition: number;
+  organizationPosition: number;
+
+  // For items: source content
+  sourceUrl: string | null;
+  faviconPath: string | null;
+  thumbnailPath: string | null;
+
+  // AI-generated content
+  aiSummary: string | null;
+  aiKeyPoints: string[] | null;
+  aiConfidence: number | null;
+
+  // Metadata
+  contentTypeCode: ContentTypeCode | null;
+  createdAt: string;
+  updatedAt: string;
+  isDeleted: boolean;
+}
+
+// ============================================================
+// Tree Node (for UI rendering)
+// ============================================================
+
+export interface TreeNode {
+  id: string;
+  title: string;
+  nodeType: NodeType;
+  color?: GumroadColor;
+  children: TreeNode[];
+  isExpanded?: boolean;
+  contentTypeCode?: ContentTypeCode | null;
+  sourceUrl?: string | null;
+  faviconPath?: string | null;
+}
+
+// ============================================================
+// Metadata Tag
+// ============================================================
+
+export interface MetadataTag {
+  id: string;
+  nodeId: string;
+  tagType: MetadataTagType;
+  tagCode: string;
+  createdAt: string;
+}
+
+// ============================================================
+// Extracted Field
+// ============================================================
+
+export interface ExtractedField {
+  id: string;
+  nodeId: string;
+  fieldName: string;
+  fieldValue: string | null;
+  fieldType: 'text' | 'number' | 'date' | 'url' | 'json';
+  createdAt: string;
+}
+
+// ============================================================
+// Segment
+// ============================================================
+
+export interface Segment {
+  id: string;
+  segmentCode: SegmentCode;
+  segmentName: string;
+  color: GumroadColor;
+  icon: string | null;
+}
+
+// ============================================================
+// Organization
+// ============================================================
+
+export interface Organization {
+  id: string;
+  orgCode: string;
+  orgName: string;
+  logoPath: string | null;
+}
+
+// ============================================================
+// Custom Space
+// ============================================================
+
+export interface CustomSpace {
+  id: string;
+  spaceName: string;
+  description: string | null;
+  color: GumroadColor | null;
+}
+
+// ============================================================
+// Processing Queue Item
+// ============================================================
+
+export interface ProcessingQueueItem {
+  id: string;
+  nodeId: string;
+  phase: 'phase1' | 'phase2';
+  status: ProcessingStatus;
+  errorMessage: string | null;
+  createdAt: string;
+  processedAt: string | null;
+}
+
+// ============================================================
+// IPC Request/Response Types
+// ============================================================
+
+export interface CreateNodeInput {
+  title: string;
+  nodeType: NodeType;
+  functionParentId?: string | null;
+  organizationParentId?: string | null;
+  sourceUrl?: string | null;
+  contentTypeCode?: ContentTypeCode | null;
+}
+
+export interface UpdateNodeInput {
+  title?: string;
+  functionParentId?: string | null;
+  organizationParentId?: string | null;
+  functionPosition?: number;
+  organizationPosition?: number;
+  aiSummary?: string | null;
+  aiKeyPoints?: string[];
+  aiConfidence?: number;
+}
+
+export interface SearchFilters {
+  contentType?: ContentTypeCode[];
+  segmentCode?: SegmentCode[];
+  tags?: string[];
+  dateRange?: {
+    start: string;
+    end: string;
+  };
+}
+
+export interface SearchResult {
+  node: Node;
+  matchedField: string;
+  matchedText: string;
+  score: number;
+}
+
+export interface ImportResult {
+  success: boolean;
+  nodeId?: string;
+  error?: string;
+  classification?: AIClassification;
+}
+
+export interface QueueStatus {
+  pending: number;
+  processing: number;
+  complete: number;
+  failed: number;
+}
+
+// ============================================================
+// AI Classification (Phase 1 - Quick Classification)
+// ============================================================
+
+export interface AIClassification {
+  // Quick classification results
+  segment: string;           // Single uppercase letter (A, T, F, S, etc.)
+  category: string;          // 3 uppercase letters (LLM, AGT, FND, etc.)
+  contentType: string;       // Single uppercase letter (T, A, V, P, etc.)
+  organization: string;      // 4 uppercase letters (ANTH, OAIA, etc.)
+  confidence: number;        // 0-1 confidence score
+  reasoning: string;         // Brief explanation
+}
+
+// ============================================================
+// Deep Analysis Result (Phase 2 - Background Enrichment)
+// ============================================================
+
+export interface DeepAnalysisResult {
+  title: string;
+  company: string;
+  phraseDescription: string;      // Ultra-brief tagline, max 100 chars
+  shortDescription: string;       // 1-3 sentence summary, max 500 chars
+  keyConcepts: string[];          // Lowercase human-readable tags
+  metadataCodes: {
+    ORG: string[];   // Organization codes
+    FNC: string[];   // Function/capability codes
+    TEC: string[];   // Technology codes
+    CON: string[];   // Concept/theme codes
+    IND: string[];   // Industry codes
+    AUD: string[];   // Audience codes
+    PRC: string[];   // Pricing model codes
+    PLT: string[];   // Platform codes
+  };
+}
+
+// ============================================================
+// Extended Metadata Tag Types (from Phase 2)
+// ============================================================
+
+export type ExtendedMetadataTagType =
+  | 'ORG'   // Organization
+  | 'FNC'   // Function/capability
+  | 'TEC'   // Technology
+  | 'CON'   // Concept/theme
+  | 'IND'   // Industry
+  | 'AUD'   // Audience
+  | 'PRC'   // Pricing
+  | 'PLT'   // Platform
+  | 'DOM';  // Domain
+
+// ============================================================
+// Extracted Content (from scraper)
+// ============================================================
+
+export interface ExtractedContent {
+  url: string;
+  title: string;
+  description: string | null;
+  content: string | null;
+  author: string | null;
+  date: string | null;
+  image: string | null;
+  favicon: string | null;
+  siteName: string | null;
+}
+
+// ============================================================
+// IPC Channel Types
+// ============================================================
+
+export interface IPCChannels {
+  // Nodes
+  'nodes:create': (data: CreateNodeInput) => Promise<Node>;
+  'nodes:read': (id: string) => Promise<Node | null>;
+  'nodes:update': (id: string, data: UpdateNodeInput) => Promise<Node>;
+  'nodes:delete': (id: string) => Promise<void>;
+  'nodes:move': (id: string, newParentId: string, view: HierarchyView) => Promise<void>;
+
+  // Hierarchy
+  'hierarchy:get-tree': (view: HierarchyView, rootId?: string) => Promise<TreeNode[]>;
+  'hierarchy:get-path': (nodeId: string, view: HierarchyView) => Promise<Node[]>;
+  'hierarchy:get-segments': () => Promise<Segment[]>;
+  'hierarchy:get-organizations': () => Promise<Organization[]>;
+
+  // Import
+  'import:url': (url: string) => Promise<ImportResult>;
+  'import:status': () => Promise<QueueStatus>;
+
+  // Search
+  'search:query': (query: string, filters?: SearchFilters) => Promise<SearchResult[]>;
+
+  // Settings
+  'settings:get': (key: string) => Promise<string | null>;
+  'settings:set': (key: string, value: string) => Promise<void>;
+  'settings:get-api-key': () => Promise<string | null>;
+  'settings:set-api-key': (key: string) => Promise<void>;
+}
+
+// ============================================================
+// Window API (exposed via preload)
+// ============================================================
+
+export interface DecantAPI {
+  nodes: {
+    create: (data: CreateNodeInput) => Promise<Node>;
+    read: (id: string) => Promise<Node | null>;
+    update: (id: string, data: UpdateNodeInput) => Promise<Node>;
+    delete: (id: string) => Promise<void>;
+    move: (id: string, newParentId: string, view: HierarchyView) => Promise<void>;
+  };
+  hierarchy: {
+    getTree: (view: HierarchyView, rootId?: string) => Promise<TreeNode[]>;
+    getPath: (nodeId: string, view: HierarchyView) => Promise<Node[]>;
+    getSegments: () => Promise<Segment[]>;
+    getOrganizations: () => Promise<Organization[]>;
+  };
+  import: {
+    url: (url: string) => Promise<ImportResult>;
+    status: () => Promise<QueueStatus>;
+    onProgress: (callback: (event: unknown, progress: number) => void) => void;
+  };
+  search: {
+    query: (query: string, filters?: SearchFilters) => Promise<SearchResult[]>;
+  };
+  settings: {
+    get: (key: string) => Promise<string | null>;
+    set: (key: string, value: string) => Promise<void>;
+    getApiKey: () => Promise<string | null>;
+    setApiKey: (key: string) => Promise<void>;
+  };
+  data: {
+    export: () => Promise<{ success: boolean; data?: string; error?: string }>;
+    import: (jsonData: string) => Promise<{ success: boolean; nodesImported?: number; error?: string }>;
+  };
+}
+
+// Extend Window interface
+declare global {
+  interface Window {
+    decantAPI: DecantAPI;
+  }
+}
