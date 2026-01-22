@@ -36,10 +36,17 @@ export function createTables(): void {
       favicon_path TEXT,
       thumbnail_path TEXT,
 
-      -- AI-generated content
+      -- AI-generated content (Phase 1)
       ai_summary TEXT,
       ai_key_points TEXT,
       ai_confidence REAL,
+
+      -- Phase 2 enrichment fields
+      company TEXT,
+      phrase_description TEXT,
+      short_description TEXT,
+      descriptor_string TEXT,
+      phase2_completed INTEGER DEFAULT 0,
 
       -- Metadata
       content_type_code TEXT,
@@ -130,6 +137,7 @@ export function createTables(): void {
       title,
       ai_summary,
       source_url,
+      descriptor_string,
       content='nodes',
       content_rowid='rowid'
     )
@@ -138,24 +146,24 @@ export function createTables(): void {
   // Triggers to keep FTS index in sync with nodes table
   db.exec(`
     CREATE TRIGGER IF NOT EXISTS nodes_fts_insert AFTER INSERT ON nodes BEGIN
-      INSERT INTO nodes_fts(rowid, title, ai_summary, source_url)
-      VALUES (NEW.rowid, NEW.title, NEW.ai_summary, NEW.source_url);
+      INSERT INTO nodes_fts(rowid, title, ai_summary, source_url, descriptor_string)
+      VALUES (NEW.rowid, NEW.title, NEW.ai_summary, NEW.source_url, NEW.descriptor_string);
     END
   `);
 
   db.exec(`
     CREATE TRIGGER IF NOT EXISTS nodes_fts_delete AFTER DELETE ON nodes BEGIN
-      INSERT INTO nodes_fts(nodes_fts, rowid, title, ai_summary, source_url)
-      VALUES ('delete', OLD.rowid, OLD.title, OLD.ai_summary, OLD.source_url);
+      INSERT INTO nodes_fts(nodes_fts, rowid, title, ai_summary, source_url, descriptor_string)
+      VALUES ('delete', OLD.rowid, OLD.title, OLD.ai_summary, OLD.source_url, OLD.descriptor_string);
     END
   `);
 
   db.exec(`
     CREATE TRIGGER IF NOT EXISTS nodes_fts_update AFTER UPDATE ON nodes BEGIN
-      INSERT INTO nodes_fts(nodes_fts, rowid, title, ai_summary, source_url)
-      VALUES ('delete', OLD.rowid, OLD.title, OLD.ai_summary, OLD.source_url);
-      INSERT INTO nodes_fts(rowid, title, ai_summary, source_url)
-      VALUES (NEW.rowid, NEW.title, NEW.ai_summary, NEW.source_url);
+      INSERT INTO nodes_fts(nodes_fts, rowid, title, ai_summary, source_url, descriptor_string)
+      VALUES ('delete', OLD.rowid, OLD.title, OLD.ai_summary, OLD.source_url, OLD.descriptor_string);
+      INSERT INTO nodes_fts(rowid, title, ai_summary, source_url, descriptor_string)
+      VALUES (NEW.rowid, NEW.title, NEW.ai_summary, NEW.source_url, NEW.descriptor_string);
     END
   `);
 
@@ -326,6 +334,80 @@ export function runMigrations(): void {
 
     console.log('FTS5 full-text search migration complete');
     targetVersion = 2;
+  }
+
+  // Migration 3: Add Phase 2 enrichment columns to nodes table
+  if (currentVersion < 3) {
+    console.log('Running migration 3: Adding Phase 2 enrichment columns...');
+    
+    // Add new columns for Phase 2 data (SQLite doesn't support IF NOT EXISTS for columns)
+    const columns = [
+      { name: 'company', type: 'TEXT' },
+      { name: 'phrase_description', type: 'TEXT' },
+      { name: 'short_description', type: 'TEXT' },
+      { name: 'descriptor_string', type: 'TEXT' },
+      { name: 'phase2_completed', type: 'INTEGER DEFAULT 0' },
+    ];
+
+    for (const col of columns) {
+      try {
+        db.exec(`ALTER TABLE nodes ADD COLUMN ${col.name} ${col.type}`);
+      } catch {
+        // Column already exists, ignore
+      }
+    }
+
+    // Update FTS5 to include descriptor_string for better search
+    // Drop and recreate triggers to include descriptor_string
+    db.exec(`DROP TRIGGER IF EXISTS nodes_fts_insert`);
+    db.exec(`DROP TRIGGER IF EXISTS nodes_fts_delete`);
+    db.exec(`DROP TRIGGER IF EXISTS nodes_fts_update`);
+
+    // Recreate FTS5 table with descriptor_string
+    db.exec(`DROP TABLE IF EXISTS nodes_fts`);
+    db.exec(`
+      CREATE VIRTUAL TABLE nodes_fts USING fts5(
+        title,
+        ai_summary,
+        source_url,
+        descriptor_string,
+        content='nodes',
+        content_rowid='rowid'
+      )
+    `);
+
+    // Recreate triggers with descriptor_string
+    db.exec(`
+      CREATE TRIGGER nodes_fts_insert AFTER INSERT ON nodes BEGIN
+        INSERT INTO nodes_fts(rowid, title, ai_summary, source_url, descriptor_string)
+        VALUES (NEW.rowid, NEW.title, NEW.ai_summary, NEW.source_url, NEW.descriptor_string);
+      END
+    `);
+
+    db.exec(`
+      CREATE TRIGGER nodes_fts_delete AFTER DELETE ON nodes BEGIN
+        INSERT INTO nodes_fts(nodes_fts, rowid, title, ai_summary, source_url, descriptor_string)
+        VALUES ('delete', OLD.rowid, OLD.title, OLD.ai_summary, OLD.source_url, OLD.descriptor_string);
+      END
+    `);
+
+    db.exec(`
+      CREATE TRIGGER nodes_fts_update AFTER UPDATE ON nodes BEGIN
+        INSERT INTO nodes_fts(nodes_fts, rowid, title, ai_summary, source_url, descriptor_string)
+        VALUES ('delete', OLD.rowid, OLD.title, OLD.ai_summary, OLD.source_url, OLD.descriptor_string);
+        INSERT INTO nodes_fts(rowid, title, ai_summary, source_url, descriptor_string)
+        VALUES (NEW.rowid, NEW.title, NEW.ai_summary, NEW.source_url, NEW.descriptor_string);
+      END
+    `);
+
+    // Repopulate FTS index
+    db.exec(`
+      INSERT INTO nodes_fts(rowid, title, ai_summary, source_url, descriptor_string)
+      SELECT rowid, title, ai_summary, source_url, descriptor_string FROM nodes
+    `);
+
+    console.log('Phase 2 enrichment columns migration complete');
+    targetVersion = 3;
   }
 
   // Update schema version

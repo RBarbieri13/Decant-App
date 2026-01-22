@@ -80,6 +80,12 @@ function mapRowToNode(row: Record<string, unknown>): Node {
     aiSummary: row.ai_summary as string | null,
     aiKeyPoints: row.ai_key_points ? JSON.parse(row.ai_key_points as string) : null,
     aiConfidence: row.ai_confidence as number | null,
+    // Phase 2 enrichment fields
+    company: row.company as string | null,
+    phraseDescription: row.phrase_description as string | null,
+    shortDescription: row.short_description as string | null,
+    descriptorString: row.descriptor_string as string | null,
+    phase2Completed: Boolean(row.phase2_completed),
     contentTypeCode: row.content_type_code as Node['contentTypeCode'],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -265,7 +271,7 @@ export function getSearchSuggestions(partialQuery: string): string[] {
 /**
  * Get recent items
  */
-export function getRecentItems(limit: number = 20): Node[] {
+export function getRecentItems(limit = 20): Node[] {
   const db = getDatabase();
 
   const rows = db.prepare(`

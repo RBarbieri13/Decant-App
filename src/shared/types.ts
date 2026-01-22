@@ -71,10 +71,17 @@ export interface Node {
   faviconPath: string | null;
   thumbnailPath: string | null;
 
-  // AI-generated content
+  // AI-generated content (Phase 1)
   aiSummary: string | null;
   aiKeyPoints: string[] | null;
   aiConfidence: number | null;
+
+  // Phase 2 enrichment fields
+  company: string | null;
+  phraseDescription: string | null;
+  shortDescription: string | null;
+  descriptorString: string | null;
+  phase2Completed: boolean;
 
   // Metadata
   contentTypeCode: ContentTypeCode | null;

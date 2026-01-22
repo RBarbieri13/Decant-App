@@ -27,3 +27,15 @@ export {
   getSearchSuggestions,
   getRecentItems,
 } from './search';
+export {
+  savePhase2Data,
+  saveMetadataCodes,
+  saveKeyConcepts,
+  getMetadataTags,
+  getExtractedFields,
+  getNodesNeedingPhase2,
+  markPhase2Complete,
+  getPhase2Data,
+  searchByMetadataTag,
+  getUniqueTagCodes,
+} from './phase2';

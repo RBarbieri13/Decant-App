@@ -4,7 +4,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../../database/connection';
-import { updateNode } from '../../database/nodes';
+import { savePhase2Data } from '../../database/phase2';
 import { importUrlPhase2 } from './pipeline';
 import type { ExtractedContent, ProcessingStatus, QueueStatus } from '@shared/types';
 
@@ -356,12 +356,15 @@ class BackgroundQueue {
         item.existingTitle
       );
 
-      // Save the Phase 2 results to the database
-      updateNode(item.nodeId, {
-        title: result.deepAnalysis.title || item.existingTitle,
-        aiSummary: result.deepAnalysis.shortDescription,
-        aiKeyPoints: result.deepAnalysis.keyConcepts,
-      });
+      // Save ALL Phase 2 results to the database using the new phase2 module
+      // This saves: title, company, phraseDescription, shortDescription, descriptorString,
+      // metadata codes (ORG, FNC, TEC, CON, IND, AUD, PRC, PLT), and key concepts
+      savePhase2Data(
+        item.nodeId,
+        result.deepAnalysis,
+        result.descriptorString,
+        result.logoUrl
+      );
 
       // Success - mark as complete
       item.status = 'complete';
