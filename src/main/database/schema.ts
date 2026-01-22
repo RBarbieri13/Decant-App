@@ -3,8 +3,6 @@
 // ============================================================
 
 import { getDatabase, isDatabaseInitialized } from './connection';
-import { v4 as uuidv4 } from 'uuid';
-import { DEFAULT_SEGMENTS, DEFAULT_ORGANIZATIONS } from '@shared/constants';
 
 /**
  * Create all database tables
@@ -222,56 +220,20 @@ export function createIndexes(): void {
 
 /**
  * Insert default segments
+ * @deprecated - All content now comes from iMessage sync
  */
 export function insertDefaultSegments(): void {
-  const db = getDatabase();
-
-  const insertNode = db.prepare(`
-    INSERT OR IGNORE INTO nodes (id, title, node_type, function_code, function_position, created_at, updated_at)
-    VALUES (?, ?, 'segment', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-  `);
-
-  const insertSegment = db.prepare(`
-    INSERT OR IGNORE INTO segments (id, segment_code, segment_name, color)
-    VALUES (?, ?, ?, ?)
-  `);
-
-  for (let i = 0; i < DEFAULT_SEGMENTS.length; i++) {
-    const segment = DEFAULT_SEGMENTS[i];
-    const id = uuidv4();
-
-    insertNode.run(id, segment.name, segment.code, i);
-    insertSegment.run(id, segment.code, segment.name, segment.color);
-  }
-
-  console.log('Default segments inserted');
+  console.log('Skipping default segments - all content comes from iMessage sync');
+  // Default segments removed to keep database clean for iMessage imports only
 }
 
 /**
  * Insert default organizations
+ * @deprecated - All content now comes from iMessage sync
  */
 export function insertDefaultOrganizations(): void {
-  const db = getDatabase();
-
-  const insertNode = db.prepare(`
-    INSERT OR IGNORE INTO nodes (id, title, node_type, organization_code, organization_position, created_at, updated_at)
-    VALUES (?, ?, 'organization', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-  `);
-
-  const insertOrg = db.prepare(`
-    INSERT OR IGNORE INTO organizations (id, org_code, org_name)
-    VALUES (?, ?, ?)
-  `);
-
-  for (let i = 0; i < DEFAULT_ORGANIZATIONS.length; i++) {
-    const org = DEFAULT_ORGANIZATIONS[i];
-    const id = uuidv4();
-
-    insertNode.run(id, org.name, org.code, i);
-    insertOrg.run(id, org.code, org.name);
-  }
-
-  console.log('Default organizations inserted');
+  console.log('Skipping default organizations - all content comes from iMessage sync');
+  // Default organizations removed to keep database clean for iMessage imports only
 }
 
 /**
@@ -287,8 +249,9 @@ export function initializeDatabase(): void {
 
   createTables();
   createIndexes();
-  insertDefaultSegments();
-  insertDefaultOrganizations();
+  // Note: Default segments and organizations removed - all content will come from iMessage sync
+  // insertDefaultSegments();
+  // insertDefaultOrganizations();
 
   console.log('Database initialization complete');
 }
