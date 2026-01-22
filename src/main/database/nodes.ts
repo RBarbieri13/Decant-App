@@ -32,6 +32,12 @@ function mapRowToNode(row: Record<string, unknown>): Node {
     aiSummary: row.ai_summary as string | null,
     aiKeyPoints: row.ai_key_points ? JSON.parse(row.ai_key_points as string) : null,
     aiConfidence: row.ai_confidence as number | null,
+    // Phase 2 enrichment fields
+    company: row.company as string | null,
+    phraseDescription: row.phrase_description as string | null,
+    shortDescription: row.short_description as string | null,
+    descriptorString: row.descriptor_string as string | null,
+    phase2Completed: Boolean(row.phase2_completed),
     contentTypeCode: row.content_type_code as Node['contentTypeCode'],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -271,6 +277,66 @@ export function searchNodes(query: string): Node[] {
   `).all(`%${query}%`) as Record<string, unknown>[];
 
   return rows.map(mapRowToNode);
+}
+
+/**
+ * Find a node by its source URL (for duplicate detection)
+ * Returns the existing node if found, null otherwise
+ */
+export function findNodeByUrl(url: string): Node | null {
+  const db = getDatabase();
+
+  const row = db.prepare(`
+    SELECT * FROM nodes WHERE source_url = ? AND is_deleted = 0
+  `).get(url) as Record<string, unknown> | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return mapRowToNode(row);
+}
+
+/**
+ * Find a node by normalized URL (removes tracking params, trailing slashes)
+ * More robust duplicate detection
+ */
+export function findNodeByNormalizedUrl(normalizedUrl: string): Node | null {
+  const db = getDatabase();
+
+  const rows = db.prepare(`
+    SELECT * FROM nodes WHERE source_url IS NOT NULL AND is_deleted = 0
+  `).all() as Record<string, unknown>[];
+
+  for (const row of rows) {
+    const sourceUrl = row.source_url as string;
+    if (normalizeUrlForComparison(sourceUrl) === normalizedUrl) {
+      return mapRowToNode(row);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Normalize URL for comparison (removes tracking params, trailing slashes)
+ */
+function normalizeUrlForComparison(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    const trackingParams = [
+      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+      'ref', 'source', 'fbclid', 'gclid',
+    ];
+    trackingParams.forEach((param) => urlObj.searchParams.delete(param));
+    let normalized = urlObj.toString();
+    if (normalized.endsWith('/')) {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized.toLowerCase();
+  } catch {
+    return url.toLowerCase();
+  }
 }
 
 /**

@@ -5,8 +5,8 @@
 import OpenAI from 'openai';
 import * as keytar from 'keytar';
 
-const SERVICE_NAME = 'Decant';
-const ACCOUNT_NAME = 'openai-api-key';
+const SERVICE_NAME = 'decant';
+const ACCOUNT_NAME = 'openai_api_key';
 
 let openaiClient: OpenAI | null = null;
 

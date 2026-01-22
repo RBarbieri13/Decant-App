@@ -2,6 +2,9 @@
 // Background Queue - Phase 2 Enrichment Processing
 // ============================================================
 
+import { v4 as uuidv4 } from 'uuid';
+import { getDatabase } from '../../database/connection';
+import { savePhase2Data } from '../../database/phase2';
 import { importUrlPhase2 } from './pipeline';
 import type { ExtractedContent, ProcessingStatus, QueueStatus } from '@shared/types';
 
@@ -26,20 +29,146 @@ type QueueEventType = 'item-added' | 'item-started' | 'item-completed' | 'item-f
 type QueueEventCallback = (event: QueueEventType, item?: QueueItem) => void;
 
 // ============================================================
+// Database Queue Operations
+// ============================================================
+
+function addToDatabase(item: QueueItem): void {
+  const db = getDatabase();
+  db.prepare(`
+    INSERT INTO processing_queue (id, node_id, phase, status, error_message, created_at, processed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    item.id,
+    item.nodeId,
+    item.phase,
+    item.status,
+    item.errorMessage,
+    item.createdAt.toISOString(),
+    item.processedAt?.toISOString() ?? null
+  );
+
+  db.prepare(`
+    INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)
+  `).run(
+    `queue_content_${item.id}`,
+    JSON.stringify({ extractedContent: item.extractedContent, existingTitle: item.existingTitle, retryCount: item.retryCount })
+  );
+}
+
+function updateInDatabase(item: QueueItem): void {
+  const db = getDatabase();
+  db.prepare(`
+    UPDATE processing_queue
+    SET status = ?, error_message = ?, processed_at = ?
+    WHERE id = ?
+  `).run(
+    item.status,
+    item.errorMessage,
+    item.processedAt?.toISOString() ?? null,
+    item.id
+  );
+
+  const contentRow = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(`queue_content_${item.id}`) as { value: string } | undefined;
+  if (contentRow) {
+    const content = JSON.parse(contentRow.value);
+    content.retryCount = item.retryCount;
+    db.prepare(`UPDATE settings SET value = ? WHERE key = ?`).run(JSON.stringify(content), `queue_content_${item.id}`);
+  }
+}
+
+function loadFromDatabase(): QueueItem[] {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT * FROM processing_queue ORDER BY created_at ASC
+  `).all() as Array<{
+    id: string;
+    node_id: string;
+    phase: string;
+    status: string;
+    error_message: string | null;
+    created_at: string;
+    processed_at: string | null;
+  }>;
+
+  return rows.map((row) => {
+    const contentRow = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(`queue_content_${row.id}`) as { value: string } | undefined;
+    const content = contentRow ? JSON.parse(contentRow.value) : { extractedContent: {}, existingTitle: '', retryCount: 0 };
+
+    return {
+      id: row.id,
+      nodeId: row.node_id,
+      extractedContent: content.extractedContent,
+      existingTitle: content.existingTitle,
+      phase: row.phase as 'phase2',
+      status: row.status as ProcessingStatus,
+      errorMessage: row.error_message,
+      retryCount: content.retryCount || 0,
+      createdAt: new Date(row.created_at),
+      processedAt: row.processed_at ? new Date(row.processed_at) : null,
+    };
+  });
+}
+
+function deleteFromDatabase(id: string): void {
+  const db = getDatabase();
+  db.prepare(`DELETE FROM processing_queue WHERE id = ?`).run(id);
+  db.prepare(`DELETE FROM settings WHERE key = ?`).run(`queue_content_${id}`);
+}
+
+function clearCompletedFromDatabase(): void {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT id FROM processing_queue WHERE status IN ('complete', 'failed')
+  `).all() as Array<{ id: string }>;
+
+  for (const row of rows) {
+    deleteFromDatabase(row.id);
+  }
+}
+
+function clearAllFromDatabase(): void {
+  const db = getDatabase();
+  const rows = db.prepare(`SELECT id FROM processing_queue`).all() as Array<{ id: string }>;
+
+  for (const row of rows) {
+    deleteFromDatabase(row.id);
+  }
+}
+
+// ============================================================
 // Background Queue Class
 // ============================================================
 
 /**
  * Background queue for Phase 2 enrichment processing
  * Processes items sequentially to avoid overwhelming the API
+ * Persists queue state to database for crash recovery
  */
 class BackgroundQueue {
   private queue: QueueItem[] = [];
   private processing = false;
   private maxRetries = 3;
   private retryDelayMs = 5000;
-  private processingDelayMs = 1000; // Delay between processing items
+  private processingDelayMs = 1000;
   private listeners: QueueEventCallback[] = [];
+  private initialized = false;
+
+  /**
+   * Initialize queue from database (call on app startup)
+   */
+  initialize(): void {
+    if (this.initialized) return;
+    
+    this.queue = loadFromDatabase();
+    this.initialized = true;
+    
+    const hasPending = this.queue.some(item => item.status === 'pending');
+    if (hasPending && !this.processing) {
+      this.processQueue();
+    }
+    
+    console.log(`Queue initialized with ${this.queue.length} items`);
+  }
 
   /**
    * Add an item to the queue for Phase 2 processing
@@ -49,7 +178,9 @@ class BackgroundQueue {
     extractedContent: ExtractedContent,
     existingTitle: string
   ): string {
-    const id = `q-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    this.initialize();
+    
+    const id = uuidv4();
 
     const item: QueueItem = {
       id,
@@ -64,10 +195,10 @@ class BackgroundQueue {
       processedAt: null,
     };
 
+    addToDatabase(item);
     this.queue.push(item);
     this.emit('item-added', item);
 
-    // Start processing if not already running
     if (!this.processing) {
       this.processQueue();
     }
@@ -79,6 +210,8 @@ class BackgroundQueue {
    * Get current queue status
    */
   getStatus(): QueueStatus {
+    this.initialize();
+    
     const counts = {
       pending: 0,
       processing: 0,
@@ -97,6 +230,7 @@ class BackgroundQueue {
    * Get all queue items
    */
   getItems(): QueueItem[] {
+    this.initialize();
     return [...this.queue];
   }
 
@@ -104,6 +238,7 @@ class BackgroundQueue {
    * Get pending items
    */
   getPendingItems(): QueueItem[] {
+    this.initialize();
     return this.queue.filter((item) => item.status === 'pending');
   }
 
@@ -111,6 +246,7 @@ class BackgroundQueue {
    * Get item by ID
    */
   getItem(id: string): QueueItem | undefined {
+    this.initialize();
     return this.queue.find((item) => item.id === id);
   }
 
@@ -118,6 +254,7 @@ class BackgroundQueue {
    * Get item by node ID
    */
   getItemByNodeId(nodeId: string): QueueItem | undefined {
+    this.initialize();
     return this.queue.find((item) => item.nodeId === nodeId);
   }
 
@@ -125,6 +262,9 @@ class BackgroundQueue {
    * Clear completed and failed items from queue
    */
   clearCompleted(): void {
+    this.initialize();
+    
+    clearCompletedFromDatabase();
     this.queue = this.queue.filter(
       (item) => item.status === 'pending' || item.status === 'processing'
     );
@@ -135,6 +275,9 @@ class BackgroundQueue {
    * Clear all items from queue
    */
   clearAll(): void {
+    this.initialize();
+    
+    clearAllFromDatabase();
     this.queue = [];
     this.processing = false;
     this.emit('queue-cleared');
@@ -144,11 +287,15 @@ class BackgroundQueue {
    * Retry a failed item
    */
   retryItem(id: string): boolean {
+    this.initialize();
+    
     const item = this.queue.find((i) => i.id === id);
     if (item && item.status === 'failed') {
       item.status = 'pending';
       item.errorMessage = null;
       item.retryCount = 0;
+      
+      updateInDatabase(item);
 
       if (!this.processing) {
         this.processQueue();
@@ -175,6 +322,7 @@ class BackgroundQueue {
     if (this.processing) return;
     this.processing = true;
 
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       // Find next pending item
       const item = this.queue.find((i) => i.status === 'pending');
@@ -197,6 +345,7 @@ class BackgroundQueue {
    */
   private async processItem(item: QueueItem): Promise<void> {
     item.status = 'processing';
+    updateInDatabase(item);
     this.emit('item-started', item);
 
     try {
@@ -207,14 +356,23 @@ class BackgroundQueue {
         item.existingTitle
       );
 
+      // Save ALL Phase 2 results to the database using the new phase2 module
+      // This saves: title, company, phraseDescription, shortDescription, descriptorString,
+      // metadata codes (ORG, FNC, TEC, CON, IND, AUD, PRC, PLT), and key concepts
+      savePhase2Data(
+        item.nodeId,
+        result.deepAnalysis,
+        result.descriptorString,
+        result.logoUrl
+      );
+
       // Success - mark as complete
       item.status = 'complete';
       item.processedAt = new Date();
+      updateInDatabase(item);
       this.emit('item-completed', item);
 
-      // Note: The actual database update should be done by the caller
-      // via the event callback, as we don't have direct DB access here
-      console.log(`Phase 2 complete for node ${item.nodeId}:`, result);
+      console.log(`Phase 2 complete for node ${item.nodeId}`);
     } catch (error) {
       console.error(`Phase 2 failed for node ${item.nodeId}:`, error);
 
@@ -224,11 +382,13 @@ class BackgroundQueue {
       if (item.retryCount < this.maxRetries) {
         // Retry after delay
         item.status = 'pending';
+        updateInDatabase(item);
         await this.delay(this.retryDelayMs * item.retryCount);
       } else {
         // Max retries reached - mark as failed
         item.status = 'failed';
         item.processedAt = new Date();
+        updateInDatabase(item);
         this.emit('item-failed', item);
       }
     }
@@ -315,4 +475,11 @@ export function clearAllItems(): void {
  */
 export function retryQueueItem(id: string): boolean {
   return getBackgroundQueue().retryItem(id);
+}
+
+/**
+ * Initialize the queue (call on app startup)
+ */
+export function initializeQueue(): void {
+  getBackgroundQueue().initialize();
 }
