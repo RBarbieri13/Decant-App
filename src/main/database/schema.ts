@@ -50,6 +50,10 @@ export function createTables(): void {
 
       -- Metadata
       content_type_code TEXT,
+
+      -- iMessage tracking (for sync)
+      imessage_rowid INTEGER UNIQUE,
+
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       is_deleted INTEGER DEFAULT 0
@@ -130,6 +134,30 @@ export function createTables(): void {
       value TEXT
     )
   `);
+
+  // iMessage Sync State
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      last_imessage_rowid INTEGER DEFAULT 0,
+      last_sync_at TEXT
+    )
+  `);
+
+  // Initialize sync_state if not exists
+  try {
+    const syncStateExists = db.prepare(`
+      SELECT id FROM sync_state WHERE id = 1
+    `).get();
+    if (!syncStateExists) {
+      db.prepare(`
+        INSERT INTO sync_state (id, last_imessage_rowid, last_sync_at)
+        VALUES (1, 0, NULL)
+      `).run();
+    }
+  } catch (e) {
+    console.log('sync_state already initialized or error:', e);
+  }
 
   // FTS5 Full-Text Search virtual table for fast text search
   db.exec(`

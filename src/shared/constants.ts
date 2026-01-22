@@ -39,6 +39,11 @@ export const IPC_CHANNELS = {
   // Data Export/Import
   DATA_EXPORT: 'data:export',
   DATA_IMPORT: 'data:import',
+
+  // iMessage Sync
+  IMESSAGE_SYNC_NOW: 'imessage:sync-now',
+  IMESSAGE_SYNC_STATUS: 'imessage:sync-status',
+  IMESSAGE_SYNC_HISTORY: 'imessage:sync-history',
 } as const;
 
 // ============================================================

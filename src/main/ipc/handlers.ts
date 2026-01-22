@@ -34,6 +34,7 @@ import {
   getQueueStatus,
   normalizeUrlForDuplicateCheck,
 } from '../services/import';
+import { syncIMessageToDecant, getSyncState } from '../services/imessage';
 
 /**
  * Register all IPC handlers
@@ -336,6 +337,85 @@ export function registerIPCHandlers(): void {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Import failed',
+      };
+    }
+  });
+
+  // ============================================================
+  // iMessage Sync Handlers
+  // ============================================================
+
+  ipcMain.handle(IPC_CHANNELS.IMESSAGE_SYNC_NOW, async () => {
+    try {
+      // Get API key from secure storage
+      const keytar = await import('keytar');
+      const apiKey = await keytar.getPassword('decant', 'openai_api_key');
+
+      if (!apiKey) {
+        return {
+          success: false,
+          error: 'Anthropic API key not configured. Please set it in settings.',
+        };
+      }
+
+      // Run sync
+      const result = await syncIMessageToDecant(apiKey);
+
+      return {
+        success: result.status === 'ok',
+        ...result,
+      };
+    } catch (error) {
+      console.error('iMessage sync failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Sync failed',
+      };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.IMESSAGE_SYNC_STATUS, async () => {
+    try {
+      const state = getSyncState();
+      return {
+        success: true,
+        lastRowId: state.last_rowid,
+        lastSyncAt: state.last_sync_at,
+      };
+    } catch (error) {
+      console.error('Failed to get sync status:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get status',
+      };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.IMESSAGE_SYNC_HISTORY, async () => {
+    try {
+      const { getDatabase } = await import('../database/connection');
+      const db = getDatabase();
+
+      // Get recent nodes imported from iMessage
+      const nodes = db
+        .prepare(
+          `SELECT id, title, source_url, imessage_rowid, created_at
+           FROM nodes
+           WHERE imessage_rowid IS NOT NULL
+           ORDER BY created_at DESC
+           LIMIT 50`
+        )
+        .all();
+
+      return {
+        success: true,
+        nodes,
+      };
+    } catch (error) {
+      console.error('Failed to get sync history:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get history',
       };
     }
   });
