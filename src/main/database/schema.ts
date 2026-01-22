@@ -124,6 +124,41 @@ export function createTables(): void {
     )
   `);
 
+  // FTS5 Full-Text Search virtual table for fast text search
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
+      title,
+      ai_summary,
+      source_url,
+      content='nodes',
+      content_rowid='rowid'
+    )
+  `);
+
+  // Triggers to keep FTS index in sync with nodes table
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS nodes_fts_insert AFTER INSERT ON nodes BEGIN
+      INSERT INTO nodes_fts(rowid, title, ai_summary, source_url)
+      VALUES (NEW.rowid, NEW.title, NEW.ai_summary, NEW.source_url);
+    END
+  `);
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS nodes_fts_delete AFTER DELETE ON nodes BEGIN
+      INSERT INTO nodes_fts(nodes_fts, rowid, title, ai_summary, source_url)
+      VALUES ('delete', OLD.rowid, OLD.title, OLD.ai_summary, OLD.source_url);
+    END
+  `);
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS nodes_fts_update AFTER UPDATE ON nodes BEGIN
+      INSERT INTO nodes_fts(nodes_fts, rowid, title, ai_summary, source_url)
+      VALUES ('delete', OLD.rowid, OLD.title, OLD.ai_summary, OLD.source_url);
+      INSERT INTO nodes_fts(rowid, title, ai_summary, source_url)
+      VALUES (NEW.rowid, NEW.title, NEW.ai_summary, NEW.source_url);
+    END
+  `);
+
   console.log('Database tables created successfully');
 }
 
@@ -243,8 +278,55 @@ export function runMigrations(): void {
     targetVersion = 1;
   }
 
-  // Future migrations go here
-  // if (currentVersion < 2) { ... }
+  // Migration 2: Add FTS5 full-text search and populate index
+  if (currentVersion < 2) {
+    console.log('Running migration 2: Adding FTS5 full-text search...');
+    
+    // Create FTS5 table if it doesn't exist (for existing databases)
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
+        title,
+        ai_summary,
+        source_url,
+        content='nodes',
+        content_rowid='rowid'
+      )
+    `);
+
+    // Create triggers if they don't exist
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS nodes_fts_insert AFTER INSERT ON nodes BEGIN
+        INSERT INTO nodes_fts(rowid, title, ai_summary, source_url)
+        VALUES (NEW.rowid, NEW.title, NEW.ai_summary, NEW.source_url);
+      END
+    `);
+
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS nodes_fts_delete AFTER DELETE ON nodes BEGIN
+        INSERT INTO nodes_fts(nodes_fts, rowid, title, ai_summary, source_url)
+        VALUES ('delete', OLD.rowid, OLD.title, OLD.ai_summary, OLD.source_url);
+      END
+    `);
+
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS nodes_fts_update AFTER UPDATE ON nodes BEGIN
+        INSERT INTO nodes_fts(nodes_fts, rowid, title, ai_summary, source_url)
+        VALUES ('delete', OLD.rowid, OLD.title, OLD.ai_summary, OLD.source_url);
+        INSERT INTO nodes_fts(rowid, title, ai_summary, source_url)
+        VALUES (NEW.rowid, NEW.title, NEW.ai_summary, NEW.source_url);
+      END
+    `);
+
+    // Populate FTS index with existing data
+    db.exec(`
+      INSERT INTO nodes_fts(rowid, title, ai_summary, source_url)
+      SELECT rowid, title, ai_summary, source_url FROM nodes
+      WHERE rowid NOT IN (SELECT rowid FROM nodes_fts)
+    `);
+
+    console.log('FTS5 full-text search migration complete');
+    targetVersion = 2;
+  }
 
   // Update schema version
   if (targetVersion > currentVersion) {

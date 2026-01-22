@@ -49,20 +49,30 @@ export const CONTENT_TYPE_LABELS: Record<ContentTypeCode, string> = {
   T: 'Tool',
   A: 'Article',
   V: 'Video',
-  P: 'Paper',
-  D: 'Documentation',
+  P: 'Podcast',
+  R: 'Research Paper',
+  G: 'Repository',
+  S: 'Social Post',
   C: 'Course',
-  R: 'Repository',
+  I: 'Image',
+  N: 'Newsletter',
+  K: 'Book',
+  U: 'Audio',
 };
 
 export const CONTENT_TYPE_ICONS: Record<ContentTypeCode, string> = {
   T: '🔧',
   A: '📄',
   V: '▶️',
-  P: '📑',
-  D: '📚',
+  P: '🎙️',
+  R: '📑',
+  G: '💻',
+  S: '💬',
   C: '🎓',
-  R: '💻',
+  I: '🖼️',
+  N: '📧',
+  K: '📚',
+  U: '🎵',
 };
 
 export const CONTENT_TYPE_COLORS: Record<ContentTypeCode, GumroadColor> = {
@@ -70,9 +80,14 @@ export const CONTENT_TYPE_COLORS: Record<ContentTypeCode, GumroadColor> = {
   A: 'blue',
   V: 'pink',
   P: 'yellow',
-  D: 'blue',
+  R: 'yellow',
+  G: 'blue',
+  S: 'green',
   C: 'green',
-  R: 'blue',
+  I: 'pink',
+  N: 'blue',
+  K: 'yellow',
+  U: 'pink',
 };
 
 // ============================================================
@@ -82,22 +97,40 @@ export const CONTENT_TYPE_COLORS: Record<ContentTypeCode, GumroadColor> = {
 export const SEGMENT_LABELS: Record<SegmentCode, string> = {
   A: 'AI',
   T: 'Technology',
-  S: 'Science',
-  R: 'Resources',
+  F: 'Finance',
+  S: 'Sports',
+  H: 'Health',
+  B: 'Business',
+  E: 'Entertainment',
+  L: 'Lifestyle',
+  X: 'Science',
+  C: 'Creative',
 };
 
 export const SEGMENT_COLORS: Record<SegmentCode, GumroadColor> = {
   A: 'pink',
   T: 'blue',
-  S: 'green',
-  R: 'yellow',
+  F: 'green',
+  S: 'yellow',
+  H: 'green',
+  B: 'blue',
+  E: 'pink',
+  L: 'yellow',
+  X: 'green',
+  C: 'pink',
 };
 
 export const SEGMENT_ICONS: Record<SegmentCode, string> = {
   A: '🤖',
   T: '💻',
-  S: '🔬',
-  R: '📚',
+  F: '💰',
+  S: '⚽',
+  H: '🏥',
+  B: '📊',
+  E: '🎮',
+  L: '🏠',
+  X: '🔬',
+  C: '🎨',
 };
 
 // ============================================================
@@ -122,8 +155,14 @@ export const DEFAULT_SEGMENTS: Array<{
 }> = [
   { code: 'A', name: 'AI', color: 'pink' },
   { code: 'T', name: 'Technology', color: 'blue' },
-  { code: 'S', name: 'Science', color: 'green' },
-  { code: 'R', name: 'Resources', color: 'yellow' },
+  { code: 'F', name: 'Finance', color: 'green' },
+  { code: 'S', name: 'Sports', color: 'yellow' },
+  { code: 'H', name: 'Health', color: 'green' },
+  { code: 'B', name: 'Business', color: 'blue' },
+  { code: 'E', name: 'Entertainment', color: 'pink' },
+  { code: 'L', name: 'Lifestyle', color: 'yellow' },
+  { code: 'X', name: 'Science', color: 'green' },
+  { code: 'C', name: 'Creative', color: 'pink' },
 ];
 
 // ============================================================

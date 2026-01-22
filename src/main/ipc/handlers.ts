@@ -17,6 +17,7 @@ import {
   deleteNode,
   moveNode,
   getNodePath,
+  findNodeByNormalizedUrl,
 } from '../database/nodes';
 import {
   getTree,
@@ -31,6 +32,7 @@ import {
   phase1ResultToNode,
   queueForPhase2,
   getQueueStatus,
+  normalizeUrlForDuplicateCheck,
 } from '../services/import';
 
 /**
@@ -109,6 +111,17 @@ export function registerIPCHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.IMPORT_URL, async (_event, url: string) => {
     try {
+      // Check for duplicate URL before importing
+      const normalizedUrl = normalizeUrlForDuplicateCheck(url);
+      const existingNode = findNodeByNormalizedUrl(normalizedUrl);
+      if (existingNode) {
+        return {
+          success: false,
+          error: `This URL has already been imported as "${existingNode.title}"`,
+          existingNodeId: existingNode.id,
+        };
+      }
+
       // Phase 1: Quick import with basic classification
       const phase1Result = await importUrlPhase1(url);
 

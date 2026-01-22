@@ -6,10 +6,32 @@
 export type NodeType = 'segment' | 'category' | 'content_type' | 'subcategory' | 'item' | 'organization' | 'custom_space';
 
 // Content type codes
-export type ContentTypeCode = 'T' | 'A' | 'V' | 'P' | 'D' | 'C' | 'R'; // Tool, Article, Video, Paper, Documentation, Course, Repository
+export type ContentTypeCode = 
+  | 'T'  // Website/Tool (interactive platform, SaaS)
+  | 'A'  // Article (written content, blog, docs)
+  | 'V'  // Video (YouTube, Vimeo)
+  | 'P'  // Podcast (episodic audio/video)
+  | 'R'  // Research Paper (academic, whitepaper)
+  | 'G'  // Repository (GitHub, code libraries)
+  | 'S'  // Social Post (Twitter, LinkedIn)
+  | 'C'  // Course/Tutorial (structured learning)
+  | 'I'  // Image/Graphic (infographics)
+  | 'N'  // Newsletter (email content)
+  | 'K'  // Book/eBook
+  | 'U'; // Audio (music, sound files)
 
 // Segment codes
-export type SegmentCode = 'A' | 'T' | 'S' | 'R'; // AI, Technology, Science, Resources
+export type SegmentCode = 
+  | 'A'  // AI (artificial intelligence, ML, LLMs)
+  | 'T'  // Technology (software, hardware, dev tools)
+  | 'F'  // Finance (money, investing, FP&A)
+  | 'S'  // Sports (football, fantasy, athletics)
+  | 'H'  // Health (medical, wellness, accessibility)
+  | 'B'  // Business (strategy, operations, management)
+  | 'E'  // Entertainment (media, gaming, music)
+  | 'L'  // Lifestyle (home, fashion, food, travel)
+  | 'X'  // Science (research, academia)
+  | 'C'; // Creative (design, art, writing)
 
 // Metadata tag types
 export type MetadataTagType = 'ORG' | 'FNC' | 'TEC' | 'LIC' | 'USR';

@@ -22,4 +22,5 @@ export {
   clearCompletedItems,
   clearAllItems,
   retryQueueItem,
+  initializeQueue,
 } from './queue';

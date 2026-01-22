@@ -108,10 +108,12 @@ export function searchNodes(
   const conditions: string[] = ['n.is_deleted = 0'];
   const params: unknown[] = [];
 
-  // Search in title
-  if (query) {
-    conditions.push('(n.title LIKE ? OR n.ai_summary LIKE ? OR n.source_url LIKE ?)');
-    params.push(`%${query}%`, `%${query}%`, `%${query}%`);
+  // Use FTS5 for text search if query is provided
+  if (query && query.trim().length > 0) {
+    // FTS5 search - escape special characters and add wildcard for prefix matching
+    const ftsQuery = query.trim().replace(/['"]/g, '').split(/\s+/).map(term => `"${term}"*`).join(' ');
+    conditions.push(`n.rowid IN (SELECT rowid FROM nodes_fts WHERE nodes_fts MATCH ?)`);
+    params.push(ftsQuery);
   }
 
   // Filter by content type

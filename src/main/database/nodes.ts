@@ -274,6 +274,66 @@ export function searchNodes(query: string): Node[] {
 }
 
 /**
+ * Find a node by its source URL (for duplicate detection)
+ * Returns the existing node if found, null otherwise
+ */
+export function findNodeByUrl(url: string): Node | null {
+  const db = getDatabase();
+
+  const row = db.prepare(`
+    SELECT * FROM nodes WHERE source_url = ? AND is_deleted = 0
+  `).get(url) as Record<string, unknown> | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return mapRowToNode(row);
+}
+
+/**
+ * Find a node by normalized URL (removes tracking params, trailing slashes)
+ * More robust duplicate detection
+ */
+export function findNodeByNormalizedUrl(normalizedUrl: string): Node | null {
+  const db = getDatabase();
+
+  const rows = db.prepare(`
+    SELECT * FROM nodes WHERE source_url IS NOT NULL AND is_deleted = 0
+  `).all() as Record<string, unknown>[];
+
+  for (const row of rows) {
+    const sourceUrl = row.source_url as string;
+    if (normalizeUrlForComparison(sourceUrl) === normalizedUrl) {
+      return mapRowToNode(row);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Normalize URL for comparison (removes tracking params, trailing slashes)
+ */
+function normalizeUrlForComparison(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    const trackingParams = [
+      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+      'ref', 'source', 'fbclid', 'gclid',
+    ];
+    trackingParams.forEach((param) => urlObj.searchParams.delete(param));
+    let normalized = urlObj.toString();
+    if (normalized.endsWith('/')) {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized.toLowerCase();
+  } catch {
+    return url.toLowerCase();
+  }
+}
+
+/**
  * Get the path from root to a node in a specific view
  */
 export function getNodePath(nodeId: string, view: HierarchyView): Node[] {
