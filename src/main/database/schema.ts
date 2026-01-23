@@ -240,6 +240,7 @@ export function insertDefaultOrganizations(): void {
  * Initialize the database schema and default data
  */
 export function initializeDatabase(): void {
+  console.log('DEBUG: Checking if database initialized...');
   if (isDatabaseInitialized()) {
     console.log('Database already initialized');
     return;
