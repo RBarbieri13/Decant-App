@@ -4,7 +4,9 @@
 
 import React, { useMemo, useState, useCallback, DragEvent, memo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { ContextMenu } from '../dialogs/ContextMenu';
 import type { TreeNode } from '../../../shared/types';
+import type { ContextMenuOption } from '../dialogs/ContextMenu';
 
 // ============================================================
 // Tree Node Component
@@ -16,10 +18,12 @@ interface TreeNodeItemProps {
   onSelect: (id: string) => void;
   onToggle: (id: string) => void;
   onDrop: (draggedId: string, targetId: string) => void;
+  onContextMenu: (nodeId: string, x: number, y: number) => void;
   selectedId: string | null;
   expandedIds: Set<string>;
   draggedId: string | null;
   setDraggedId: (id: string | null) => void;
+  searchHighlightIds: Set<string>;
 }
 
 const TreeNodeItem = memo(function TreeNodeItem({
@@ -28,10 +32,12 @@ const TreeNodeItem = memo(function TreeNodeItem({
   onSelect,
   onToggle,
   onDrop,
+  onContextMenu,
   selectedId,
   expandedIds,
   draggedId,
   setDraggedId,
+  searchHighlightIds,
 }: TreeNodeItemProps): React.ReactElement {
   const [isDragOver, setIsDragOver] = useState(false);
   const isExpanded = expandedIds.has(node.id);
@@ -106,10 +112,17 @@ const TreeNodeItem = memo(function TreeNodeItem({
     }
   }, [node.id, canAcceptDrop, onDrop]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelect(node.id);
+    onContextMenu(node.id, e.clientX, e.clientY);
+  }, [node.id, onSelect, onContextMenu]);
+
   return (
     <div className="tree-node-wrapper">
       <div
-        className={`tree-node-row ${isSelected ? 'selected' : ''} ${node.nodeType} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
+        className={`tree-node-row ${isSelected ? 'selected' : ''} ${node.nodeType} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''} ${searchHighlightIds.has(node.id) ? 'search-highlighted' : ''}`}
         style={{ paddingLeft: level * 16 + 8 }}
         draggable={node.nodeType === 'item'}
         onDragStart={handleDragStart}
@@ -117,6 +130,7 @@ const TreeNodeItem = memo(function TreeNodeItem({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onContextMenu={handleContextMenu}
       >
         {/* Expand/Collapse Button */}
         <button
@@ -172,10 +186,12 @@ const TreeNodeItem = memo(function TreeNodeItem({
               onSelect={onSelect}
               onToggle={onToggle}
               onDrop={onDrop}
+              onContextMenu={onContextMenu}
               selectedId={selectedId}
               expandedIds={expandedIds}
               draggedId={draggedId}
               setDraggedId={setDraggedId}
+              searchHighlightIds={searchHighlightIds}
             />
           ))}
         </div>
@@ -200,9 +216,15 @@ export function TreePanel(): React.ReactElement {
     selectedNodeId,
     expandedNodeIds,
     treeLoading,
+    searchQuery,
+    searchResultIds,
   } = state;
 
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [contextMenuNodeId, setContextMenuNodeId] = useState<string | null>(null);
 
   // Get current panel title
   const panelTitle = useMemo(() => {
@@ -224,13 +246,140 @@ export function TreePanel(): React.ReactElement {
     dispatch({ type: 'TOGGLE_NODE_EXPANDED', id });
   };
 
+  // Helper function to check if a node is a descendant of another
+  const isDescendant = (nodeId: string, potentialAncestorId: string, nodes: TreeNode[]): boolean => {
+    for (const node of nodes) {
+      if (node.id === potentialAncestorId && node.children) {
+        if (node.children.some(child => child.id === nodeId)) return true;
+        if (isDescendant(nodeId, potentialAncestorId, node.children)) return true;
+      }
+      if (node.children && isDescendant(nodeId, potentialAncestorId, node.children)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Helper function to find a node by ID in the tree
+  const findNodeInTree = (nodeId: string, nodes: TreeNode[]): TreeNode | null => {
+    for (const node of nodes) {
+      if (node.id === nodeId) return node;
+      if (node.children) {
+        const found = findNodeInTree(nodeId, node.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const contextMenuNode = contextMenuNodeId ? findNodeInTree(contextMenuNodeId, tree) : null;
+
+  // Build context menu options
+  const contextMenuOptions: ContextMenuOption[] = contextMenuNode ? [
+    {
+      label: 'Open Link',
+      icon: '🔗',
+      shortcut: '⌘O',
+      action: () => {
+        if (contextMenuNode.sourceUrl) {
+          window.open(contextMenuNode.sourceUrl, '_blank');
+        }
+      },
+      disabled: !contextMenuNode.sourceUrl,
+    },
+    {
+      label: 'Edit',
+      icon: '✏️',
+      shortcut: '⌘E',
+      action: () => {
+        handleSelectNode(contextMenuNode.id);
+      },
+    },
+    { divider: true },
+    {
+      label: 'Merge with...',
+      icon: '🔀',
+      action: () => {
+        if (contextMenuNode.nodeType === 'item') {
+          actions.openMergeDialog(contextMenuNode.id);
+        }
+      },
+      disabled: contextMenuNode.nodeType !== 'item',
+    },
+    { divider: true },
+    {
+      label: 'Copy URL',
+      icon: '📋',
+      action: () => {
+        if (contextMenuNode.sourceUrl) {
+          navigator.clipboard.writeText(contextMenuNode.sourceUrl);
+          setToast({ message: 'URL copied to clipboard', type: 'success' });
+          setTimeout(() => setToast(null), 2000);
+        }
+      },
+      disabled: !contextMenuNode.sourceUrl,
+    },
+    {
+      label: 'Copy Title',
+      icon: '📄',
+      action: () => {
+        navigator.clipboard.writeText(contextMenuNode.title);
+        setToast({ message: 'Title copied to clipboard', type: 'success' });
+        setTimeout(() => setToast(null), 2000);
+      },
+    },
+    { divider: true },
+    {
+      label: 'Delete',
+      icon: '🗑️',
+      shortcut: '⌘⌫',
+      action: () => {
+        const confirmed = window.confirm(`Delete "${contextMenuNode.title}"?`);
+        if (confirmed) {
+          actions.deleteNode(contextMenuNode.id);
+        }
+      },
+    },
+  ] : [];
+
   const handleDropNode = useCallback(async (draggedNodeId: string, targetId: string) => {
     try {
+      // Prevent dropping a node into its own descendant
+      if (isDescendant(draggedNodeId, targetId, tree)) {
+        setToast({ message: "Can't move parent into its own child", type: 'error' });
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+
+      // Auto-expand the target if it's a container
+      if (expandedNodeIds && !expandedNodeIds.has(targetId)) {
+        dispatch({ type: 'TOGGLE_NODE_EXPANDED', id: targetId });
+      }
+
       await actions.moveNode(draggedNodeId, targetId);
+      setToast({ message: 'Item moved successfully', type: 'success' });
+      setTimeout(() => setToast(null), 2000);
     } catch (err) {
       console.error('Failed to move node:', err);
+      setToast({
+        message: err instanceof Error ? err.message : 'Failed to move item',
+        type: 'error'
+      });
+      setTimeout(() => setToast(null), 3000);
     }
-  }, [actions]);
+  }, [actions, tree, expandedNodeIds, dispatch]);
+
+  // Handle context menu
+  const handleContextMenu = useCallback((nodeId: string, x: number, y: number) => {
+    setContextMenuNodeId(nodeId);
+    setContextMenuPosition({ x, y });
+    setContextMenuOpen(true);
+  }, []);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenuOpen(false);
+    setContextMenuNodeId(null);
+  }, []);
 
   return (
     <section className="panel tree-panel">
@@ -278,14 +427,32 @@ export function TreePanel(): React.ReactElement {
                 onSelect={handleSelectNode}
                 onToggle={handleToggleNode}
                 onDrop={handleDropNode}
+                onContextMenu={handleContextMenu}
                 selectedId={selectedNodeId}
                 expandedIds={expandedNodeIds}
                 draggedId={draggedId}
                 setDraggedId={setDraggedId}
+                searchHighlightIds={searchResultIds}
               />
             ))}
           </div>
         )}
+
+        {/* Toast Notification */}
+        {toast && (
+          <div className={`tree-toast tree-toast--${toast.type}`}>
+            {toast.type === 'success' ? '✓' : '✕'} {toast.message}
+          </div>
+        )}
+
+        {/* Context Menu */}
+        <ContextMenu
+          isOpen={contextMenuOpen}
+          position={contextMenuPosition}
+          node={contextMenuNode}
+          options={contextMenuOptions}
+          onClose={handleCloseContextMenu}
+        />
       </div>
 
       <style>{`
@@ -387,6 +554,14 @@ export function TreePanel(): React.ReactElement {
           background: var(--gum-yellow);
         }
 
+        .tree-node-row.search-highlighted {
+          background: rgba(255, 228, 0, 0.3);
+        }
+
+        .tree-node-row.search-highlighted.selected {
+          background: var(--gum-yellow);
+        }
+
         .tree-node-row.dragging {
           opacity: 0.5;
         }
@@ -467,6 +642,44 @@ export function TreePanel(): React.ReactElement {
         .gum-badge--small {
           padding: 2px 6px;
           font-size: 10px;
+        }
+
+        .tree-toast {
+          position: absolute;
+          bottom: 12px;
+          left: 12px;
+          right: 12px;
+          padding: var(--space-sm);
+          border-radius: var(--border-radius);
+          font-size: var(--font-size-sm);
+          animation: slideUp 0.3s ease-out;
+          display: flex;
+          align-items: center;
+          gap: var(--space-xs);
+          z-index: 1000;
+        }
+
+        .tree-toast--success {
+          background: var(--gum-green);
+          color: var(--gum-black);
+          border: 2px solid var(--gum-black);
+        }
+
+        .tree-toast--error {
+          background: var(--gum-pink);
+          color: var(--gum-black);
+          border: 2px solid var(--gum-black);
+        }
+
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
       `}</style>
     </section>

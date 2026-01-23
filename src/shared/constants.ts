@@ -15,6 +15,7 @@ export const IPC_CHANNELS = {
   NODES_UPDATE: 'nodes:update',
   NODES_DELETE: 'nodes:delete',
   NODES_MOVE: 'nodes:move',
+  NODES_MERGE: 'nodes:merge',
 
   // Hierarchy
   HIERARCHY_GET_TREE: 'hierarchy:get-tree',

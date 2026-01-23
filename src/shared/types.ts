@@ -312,6 +312,7 @@ export interface IPCChannels {
   'nodes:update': (id: string, data: UpdateNodeInput) => Promise<Node>;
   'nodes:delete': (id: string) => Promise<void>;
   'nodes:move': (id: string, newParentId: string, view: HierarchyView) => Promise<void>;
+  'nodes:merge': (primaryId: string, secondaryId: string, options: { keepMetadata: boolean; appendSummary: boolean }) => Promise<Node>;
 
   // Hierarchy
   'hierarchy:get-tree': (view: HierarchyView, rootId?: string) => Promise<TreeNode[]>;
@@ -344,6 +345,7 @@ export interface DecantAPI {
     update: (id: string, data: UpdateNodeInput) => Promise<Node>;
     delete: (id: string) => Promise<void>;
     move: (id: string, newParentId: string, view: HierarchyView) => Promise<void>;
+    merge: (primaryId: string, secondaryId: string, options: { keepMetadata: boolean; appendSummary: boolean }) => Promise<Node>;
   };
   hierarchy: {
     getTree: (view: HierarchyView, rootId?: string) => Promise<TreeNode[]>;

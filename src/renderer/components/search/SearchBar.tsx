@@ -3,6 +3,7 @@
 // ============================================================
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useApp } from '../../context/AppContext';
 import type { SearchResult } from '../../../shared/types';
 
 interface SearchBarProps {
@@ -10,6 +11,7 @@ interface SearchBarProps {
 }
 
 export function SearchBar({ onSelectResult }: SearchBarProps): React.ReactElement {
+  const { actions } = useApp();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -24,6 +26,7 @@ export function SearchBar({ onSelectResult }: SearchBarProps): React.ReactElemen
     if (!searchQuery.trim()) {
       setResults([]);
       setShowResults(false);
+      actions.clearSearch();
       return;
     }
 
@@ -33,13 +36,18 @@ export function SearchBar({ onSelectResult }: SearchBarProps): React.ReactElemen
       setResults(searchResults);
       setShowResults(true);
       setSelectedIndex(-1);
+
+      // Update AppContext with search results for tree highlighting
+      const resultIds = new Set(searchResults.map(r => r.node.id));
+      actions.setSearchQuery(searchQuery, resultIds);
     } catch (error) {
       console.error('Search failed:', error);
       setResults([]);
+      actions.clearSearch();
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  }, [actions]);
 
   // Handle input change with debouncing
   const handleInputChange = useCallback(
@@ -101,9 +109,10 @@ export function SearchBar({ onSelectResult }: SearchBarProps): React.ReactElemen
       setQuery('');
       setResults([]);
       setShowResults(false);
+      actions.clearSearch();
       onSelectResult?.(result);
     },
-    [onSelectResult]
+    [onSelectResult, actions]
   );
 
   // Click outside to close

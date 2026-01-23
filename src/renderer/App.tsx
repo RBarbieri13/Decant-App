@@ -15,7 +15,7 @@ function App(): React.ReactElement {
   useEffect(() => {
     const loadTheme = async () => {
       try {
-        const savedTheme = await window.decantAPI.settings.get('theme');
+        const savedTheme = localStorage.getItem('theme') || 'light';
         if (savedTheme === 'dark' || savedTheme === 'light') {
           document.documentElement.setAttribute('data-theme', savedTheme);
         }

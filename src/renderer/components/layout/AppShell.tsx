@@ -2,7 +2,7 @@
 // App Shell - Main Three-Panel Layout
 // ============================================================
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { SpacesPanel } from './SpacesPanel';
 import { TreePanel } from './TreePanel';
@@ -10,11 +10,18 @@ import { DetailPanel } from './DetailPanel';
 import { ImportDialog } from '../import/ImportDialog';
 import { SearchBar } from '../search/SearchBar';
 import { SettingsDialog } from '../settings/SettingsDialog';
+import { MergeDialog } from '../dialogs/MergeDialog';
 import type { SearchResult } from '../../../shared/types';
 
 export function AppShell(): React.ReactElement {
   const { state, actions } = useApp();
-  const { loading, error, currentView, settingsDialogOpen } = state;
+  const { loading, error, currentView, settingsDialogOpen, mergeDialogOpen, mergeDialogPrimaryNodeId, selectedNode } = state;
+
+  // Get primary node for merge dialog
+  const mergePrimaryNode = useMemo(() => {
+    if (!mergeDialogPrimaryNodeId || !selectedNode) return null;
+    return mergeDialogPrimaryNodeId === selectedNode.id ? selectedNode : null;
+  }, [mergeDialogPrimaryNodeId, selectedNode]);
 
   // Handle search result selection
   const handleSearchSelect = useCallback(
@@ -116,6 +123,14 @@ export function AppShell(): React.ReactElement {
       <SettingsDialog
         isOpen={settingsDialogOpen}
         onClose={actions.closeSettingsDialog}
+      />
+
+      {/* Merge Dialog */}
+      <MergeDialog
+        isOpen={mergeDialogOpen}
+        primaryNode={mergePrimaryNode}
+        onClose={actions.closeMergeDialog}
+        onMerge={actions.mergeNodes}
       />
 
       <style>{`
