@@ -15,6 +15,8 @@ export function registerAPIRoutes(app: Express): void {
   app.post('/api/nodes', nodeRoutes.createNode);
   app.put('/api/nodes/:id', nodeRoutes.updateNode);
   app.delete('/api/nodes/:id', nodeRoutes.deleteNode);
+  app.post('/api/nodes/:id/merge', nodeRoutes.mergeNodes);
+  app.post('/api/nodes/:id/move', nodeRoutes.moveNode);
 
   // Hierarchy routes
   app.get('/api/hierarchy/tree/:view', hierarchyRoutes.getHierarchyTree);

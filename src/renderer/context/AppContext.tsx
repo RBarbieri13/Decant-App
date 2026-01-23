@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
-import { hierarchyAPI, nodesAPI, searchAPI, importAPI, settingsAPI } from '../services/api';
+import { hierarchyAPI, nodesAPI, searchAPI, importAPI, settingsAPI, mergeAPI, moveAPI } from '../services/api';
 
 // ============================================================
 // State Types
@@ -21,6 +21,13 @@ interface AppState {
   searchQuery: string;
   searchResults: any[];
   importDialogOpen: boolean;
+  mergeDialogOpen: boolean;
+  mergeSourceNodeId: string | null;
+  selectedSegmentId: string | null;
+  selectedOrganizationId: string | null;
+  expandedNodeIds: Set<string>;
+  searchResultIds: Set<string>;
+  treeLoading: boolean;
 }
 
 type AppAction =
@@ -35,7 +42,14 @@ type AppAction =
   | { type: 'SET_SEARCH_QUERY'; query: string }
   | { type: 'SET_SEARCH_RESULTS'; results: any[] }
   | { type: 'OPEN_IMPORT_DIALOG' }
-  | { type: 'CLOSE_IMPORT_DIALOG' };
+  | { type: 'CLOSE_IMPORT_DIALOG' }
+  | { type: 'OPEN_MERGE_DIALOG'; nodeId: string }
+  | { type: 'CLOSE_MERGE_DIALOG' }
+  | { type: 'SET_SELECTED_SEGMENT'; id: string | null }
+  | { type: 'SET_SELECTED_ORGANIZATION'; id: string | null }
+  | { type: 'TOGGLE_NODE_EXPANDED'; id: string }
+  | { type: 'SET_TREE_LOADING'; loading: boolean }
+  | { type: 'SET_SEARCH_RESULT_IDS'; ids: Set<string> };
 
 // ============================================================
 // Initial State
@@ -53,6 +67,13 @@ const initialState: AppState = {
   searchQuery: '',
   searchResults: [],
   importDialogOpen: false,
+  mergeDialogOpen: false,
+  mergeSourceNodeId: null,
+  selectedSegmentId: null,
+  selectedOrganizationId: null,
+  expandedNodeIds: new Set(),
+  searchResultIds: new Set(),
+  treeLoading: true,
 };
 
 // ============================================================
@@ -85,6 +106,27 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, importDialogOpen: true };
     case 'CLOSE_IMPORT_DIALOG':
       return { ...state, importDialogOpen: false };
+    case 'OPEN_MERGE_DIALOG':
+      return { ...state, mergeDialogOpen: true, mergeSourceNodeId: action.nodeId };
+    case 'CLOSE_MERGE_DIALOG':
+      return { ...state, mergeDialogOpen: false, mergeSourceNodeId: null };
+    case 'SET_SELECTED_SEGMENT':
+      return { ...state, selectedSegmentId: action.id };
+    case 'SET_SELECTED_ORGANIZATION':
+      return { ...state, selectedOrganizationId: action.id };
+    case 'TOGGLE_NODE_EXPANDED': {
+      const newSet = new Set(state.expandedNodeIds);
+      if (newSet.has(action.id)) {
+        newSet.delete(action.id);
+      } else {
+        newSet.add(action.id);
+      }
+      return { ...state, expandedNodeIds: newSet };
+    }
+    case 'SET_TREE_LOADING':
+      return { ...state, treeLoading: action.loading };
+    case 'SET_SEARCH_RESULT_IDS':
+      return { ...state, searchResultIds: action.ids };
     default:
       return state;
   }
@@ -112,6 +154,10 @@ interface AppContextValue {
     checkApiKeyStatus: () => Promise<boolean>;
     openImportDialog: () => void;
     closeImportDialog: () => void;
+    openMergeDialog: (nodeId: string) => void;
+    closeMergeDialog: () => void;
+    mergeNodes: (primaryId: string, secondaryId: string, options: { keepMetadata?: boolean; appendSummary?: boolean }) => Promise<void>;
+    moveNode: (nodeId: string, targetParentId: string) => Promise<void>;
   };
 }
 
@@ -259,6 +305,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'CLOSE_IMPORT_DIALOG' });
   }, []);
 
+  const openMergeDialog = useCallback((nodeId: string) => {
+    dispatch({ type: 'OPEN_MERGE_DIALOG', nodeId });
+  }, []);
+
+  const closeMergeDialog = useCallback(() => {
+    dispatch({ type: 'CLOSE_MERGE_DIALOG' });
+  }, []);
+
+  const mergeNodes = useCallback(async (primaryId: string, secondaryId: string, options: { keepMetadata?: boolean; appendSummary?: boolean }) => {
+    try {
+      await mergeAPI.merge(primaryId, secondaryId, options);
+      dispatch({ type: 'CLOSE_MERGE_DIALOG' });
+      await loadTree();
+      await selectNode(primaryId);
+    } catch (err) {
+      console.error('Failed to merge nodes:', err);
+      dispatch({ type: 'SET_ERROR', error: 'Failed to merge nodes' });
+    }
+  }, [loadTree, selectNode]);
+
+  const moveNode = useCallback(async (nodeId: string, targetParentId: string) => {
+    try {
+      await moveAPI.moveNode(nodeId, targetParentId, state.currentView);
+      await loadTree();
+    } catch (err) {
+      console.error('Failed to move node:', err);
+      dispatch({ type: 'SET_ERROR', error: 'Failed to move node' });
+    }
+  }, [loadTree, state.currentView]);
+
   // Load initial data
   useEffect(() => {
     const initializeApp = async () => {
@@ -291,6 +367,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       checkApiKeyStatus,
       openImportDialog,
       closeImportDialog,
+      openMergeDialog,
+      closeMergeDialog,
+      mergeNodes,
+      moveNode,
     },
   };
 

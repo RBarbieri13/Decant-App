@@ -51,3 +51,65 @@ export async function deleteNode(req, res) {
         res.status(400).json({ error: error.message });
     }
 }
+export async function mergeNodes(req, res) {
+    try {
+        const { id: primaryId } = req.params;
+        const { secondaryId, options } = req.body;
+        if (!secondaryId) {
+            res.status(400).json({ error: 'secondaryId is required' });
+            return;
+        }
+        // Get both nodes
+        const primaryNode = readNode(primaryId);
+        const secondaryNode = readNode(secondaryId);
+        if (!primaryNode || !secondaryNode) {
+            res.status(404).json({ error: 'One or both nodes not found' });
+            return;
+        }
+        // Merge logic: keep primary, optionally merge metadata from secondary
+        const mergedData = { ...primaryNode };
+        if (options?.keepMetadata && secondaryNode.metadata_tags) {
+            mergedData.metadata_tags = [
+                ...(primaryNode.metadata_tags || []),
+                ...secondaryNode.metadata_tags,
+            ];
+        }
+        if (options?.appendSummary && secondaryNode.ai_summary) {
+            mergedData.ai_summary = (primaryNode.ai_summary || '') + '\n' + secondaryNode.ai_summary;
+        }
+        // Update the primary node
+        const updated = dbUpdateNode(primaryId, mergedData);
+        // Delete the secondary node
+        dbDeleteNode(secondaryId);
+        res.json(updated);
+    }
+    catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+}
+export async function moveNode(req, res) {
+    try {
+        const { id: nodeId } = req.params;
+        const { targetParentId, targetHierarchy } = req.body;
+        const node = readNode(nodeId);
+        if (!node) {
+            res.status(404).json({ error: 'Node not found' });
+            return;
+        }
+        // Update parent reference based on hierarchy
+        const updateData = {};
+        if (targetHierarchy === 'function') {
+            updateData.function_parent_id = targetParentId;
+            updateData.organization_parent_id = null;
+        }
+        else {
+            updateData.organization_parent_id = targetParentId;
+            updateData.function_parent_id = null;
+        }
+        const updated = dbUpdateNode(nodeId, updateData);
+        res.json(updated);
+    }
+    catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+}

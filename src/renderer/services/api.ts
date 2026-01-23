@@ -126,6 +126,32 @@ export const importAPI = {
   },
 };
 
+// Merge API
+export const mergeAPI = {
+  async merge(primaryId: string, secondaryId: string, options: { keepMetadata?: boolean; appendSummary?: boolean }): Promise<Node> {
+    const res = await fetch(`${API_BASE}/nodes/${primaryId}/merge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secondaryId, options }),
+    });
+    if (!res.ok) throw new Error('Failed to merge nodes');
+    return res.json();
+  },
+};
+
+// Hierarchy API - Move operations
+export const moveAPI = {
+  async moveNode(nodeId: string, targetParentId: string, targetHierarchy: 'function' | 'organization'): Promise<Node> {
+    const res = await fetch(`${API_BASE}/nodes/${nodeId}/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetParentId, targetHierarchy }),
+    });
+    if (!res.ok) throw new Error('Failed to move node');
+    return res.json();
+  },
+};
+
 // Settings API
 export const settingsAPI = {
   async setApiKey(apiKey: string): Promise<void> {
