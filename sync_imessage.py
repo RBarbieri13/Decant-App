@@ -20,7 +20,11 @@ from anthropic import Anthropic
 
 # Constants
 IMESSAGE_DB_PATH = Path.home() / "Library/Messages/chat.db"
-DECANT_DB_PATH = Path.home() / "Library/Application Support/Decant/decant.db"
+# Try the web version first, then fall back to Electron app path
+DECANT_DB_PATH = Path.home() / ".decant/data/decant.db"
+if not DECANT_DB_PATH.exists():
+    DECANT_DB_PATH = Path.home() / "Library/Application Support/Decant/decant.db"
+
 IMESSAGE_CHAT_ID = 117
 APPLE_EPOCH = 978307200
 
@@ -273,51 +277,80 @@ def insert_into_decant(items: list[dict]) -> int:
     """Insert categorized items into Decant database"""
     import uuid
 
-    conn = sqlite3.connect(DECANT_DB_PATH)
-    cursor = conn.cursor()
+    # Use timeout to handle database locks
+    conn = sqlite3.connect(DECANT_DB_PATH, timeout=30.0)
+    conn.row_factory = sqlite3.Row
 
     inserted = 0
     for item in items:
         try:
             node_id = str(uuid.uuid4())
             title = item.get('title') or item.get('url')
-            function_code = f"SRC/{item.get('category', 'Other').replace(' ', '_')[:20]}"
-            organization_code = item['domain'].replace('.', '_')[:20]
+            url = item['url']
+            source_domain = item['domain']
+            short_description = item.get('description', '')[:500]
+            ai_summary = item.get('summary', '')
+            metadata_tags = json.dumps(item.get('tags', []))
+            key_concepts = item.get('keywords', '')
 
+            cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO nodes (
-                    id, title, node_type, source_url, ai_summary, ai_key_points,
-                    function_code, organization_code, imessage_rowid,
-                    content_type_code, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    id, title, url, source_domain,
+                    short_description, ai_summary,
+                    phrase_description, metadata_tags
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                node_id, title, 'item', item['url'],
-                item.get('summary'), item.get('keywords'),
-                function_code, organization_code,
-                item['imessage_rowid'],
-                item.get('category', 'Other')
+                node_id, title, url, source_domain,
+                short_description, ai_summary,
+                item.get('summary', ''), metadata_tags
             ))
+            conn.commit()
+
+            # Store key_concepts in the key_concepts table if it exists
+            if key_concepts:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        INSERT INTO key_concepts (id, node_id, concept)
+                        VALUES (?, ?, ?)
+                    """, (str(uuid.uuid4()), node_id, key_concepts))
+                    conn.commit()
+                except:
+                    pass
+
             inserted += 1
             print(f"  ✅ {title}")
 
-        except sqlite3.IntegrityError:
-            print(f"  ⏭️  Skipped (duplicate): {item['url']}")
+        except sqlite3.IntegrityError as e:
+            print(f"  ⏭️  Skipped (duplicate): {item.get('url', 'Unknown URL')}")
+        except Exception as e:
+            print(f"  ❌ Error inserting {item.get('title', item.get('url', 'Unknown'))}: {str(e)}")
 
-    conn.commit()
     conn.close()
     return inserted
 
 
-def update_sync_state(last_rowid: int):
-    """Update sync state"""
-    conn = sqlite3.connect(DECANT_DB_PATH)
-    conn.execute("""
-        UPDATE sync_state
-        SET last_imessage_rowid = ?, last_sync_at = CURRENT_TIMESTAMP
-        WHERE id = 1
-    """, (last_rowid,))
-    conn.commit()
-    conn.close()
+def get_sync_state(conn: sqlite3.Connection) -> int:
+    """Get the last synced iMessage rowid from settings"""
+    try:
+        cursor = conn.execute("SELECT value FROM settings WHERE key = 'last_imessage_rowid'")
+        result = cursor.fetchone()
+        return int(result[0]) if result else 0
+    except:
+        return 0
+
+
+def update_sync_state(conn: sqlite3.Connection, last_rowid: int):
+    """Update last synced iMessage rowid in settings"""
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO settings (key, value)
+            VALUES ('last_imessage_rowid', ?)
+        """, (str(last_rowid),))
+        conn.commit()
+    except:
+        pass
 
 
 async def main():
@@ -325,38 +358,51 @@ async def main():
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:
         print('❌ ANTHROPIC_API_KEY environment variable not set')
-        return
+        print('ℹ️  Sync without AI categorization - URLs will be imported with basic metadata')
+        api_key = None
 
     print('🔄 Syncing iMessage to Decant...\n')
 
-    # 1. Get messages
+    # 1. Get sync state
+    conn = sqlite3.connect(DECANT_DB_PATH)
+    last_rowid = get_sync_state(conn)
+    conn.close()
+    print(f'📝 Last sync: rowid {last_rowid}\n')
+
+    # 2. Get messages
     print('📨 Fetching messages from iMessage...')
-    messages = get_new_imessage_messages(0)
+    messages = get_new_imessage_messages(last_rowid)
     print(f'✅ Found {len(messages)} URLs\n')
 
     if not messages:
         print('ℹ️  No new messages to sync')
         return
 
-    # 2. Enrich metadata
+    # 3. Enrich metadata
     print('🔍 Enriching metadata...')
     enriched = await enrich_urls(messages, concurrency=5)
     print(f'✅ Enriched {len(enriched)} URLs\n')
 
-    # 3. Categorize
-    print('🤖 Categorizing with Claude...')
-    categorized = categorize_batch(enriched, api_key)
-    print(f'✅ Categorized {len(categorized)} URLs\n')
+    # 4. Categorize (if API key available)
+    if api_key:
+        print('🤖 Categorizing with Claude...')
+        categorized = categorize_batch(enriched, api_key)
+        print(f'✅ Categorized {len(categorized)} URLs\n')
+    else:
+        print('⏭️  Skipping AI categorization (no API key)')
+        categorized = [{**item, 'category': 'Other', 'summary': item.get('title', item['url'])} for item in enriched]
 
-    # 4. Insert
+    # 5. Insert
     print('💾 Inserting into Decant...')
     inserted = insert_into_decant(categorized)
     print(f'✅ Inserted {inserted} items\n')
 
-    # 5. Update sync state
-    if messages:
+    # 6. Update sync state
+    if categorized:
         max_rowid = max(m['imessage_rowid'] for m in categorized)
-        update_sync_state(max_rowid)
+        conn = sqlite3.connect(DECANT_DB_PATH)
+        update_sync_state(conn, max_rowid)
+        conn.close()
         print(f'🎉 Sync complete! {inserted} items imported')
 
 
