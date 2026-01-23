@@ -97,3 +97,49 @@ export const searchAPI = {
     return res.json();
   },
 };
+
+// Import API
+export interface ImportResult {
+  success: boolean;
+  nodeId?: string;
+  node?: Node;
+  classification?: {
+    segment: string;
+    contentType: string;
+    keyConcepts: string[];
+  };
+  error?: string;
+}
+
+export const importAPI = {
+  async importUrl(url: string): Promise<ImportResult> {
+    const res = await fetch(`${API_BASE}/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Import failed' };
+    }
+    return data;
+  },
+};
+
+// Settings API
+export const settingsAPI = {
+  async setApiKey(apiKey: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/settings/api-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey }),
+    });
+    if (!res.ok) throw new Error('Failed to set API key');
+  },
+
+  async getApiKeyStatus(): Promise<{ configured: boolean }> {
+    const res = await fetch(`${API_BASE}/settings/api-key/status`);
+    if (!res.ok) throw new Error('Failed to get API key status');
+    return res.json();
+  },
+};
