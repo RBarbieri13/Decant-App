@@ -237,12 +237,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ? state.selectedSegmentId
           : state.selectedOrganizationId;
 
-      if (rootId) {
-        const tree = await window.decantAPI.hierarchy.getTree(state.currentView, rootId);
-        dispatch({ type: 'SET_TREE', tree });
-      } else {
-        dispatch({ type: 'SET_TREE', tree: [] });
-      }
+      // Load tree with or without rootId (rootId is optional - if not provided, shows root items)
+      const tree = await window.decantAPI.hierarchy.getTree(state.currentView, rootId || undefined);
+      dispatch({ type: 'SET_TREE', tree });
     } catch (err) {
       console.error('Failed to load tree:', err);
       dispatch({ type: 'SET_TREE', tree: [] });
