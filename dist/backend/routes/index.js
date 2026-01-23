@@ -4,6 +4,7 @@
 import * as nodeRoutes from './nodes.js';
 import * as hierarchyRoutes from './hierarchy.js';
 import * as searchRoutes from './search.js';
+import * as importRoutes from './import.js';
 export function registerAPIRoutes(app) {
     // Node routes
     app.get('/api/nodes', nodeRoutes.getAllNodes);
@@ -17,4 +18,8 @@ export function registerAPIRoutes(app) {
     app.get('/api/hierarchy/organizations', hierarchyRoutes.getOrganizations);
     // Search routes
     app.get('/api/search', searchRoutes.search);
+    // Import routes
+    app.post('/api/import', importRoutes.importUrl);
+    app.post('/api/settings/api-key', importRoutes.setApiKeyEndpoint);
+    app.get('/api/settings/api-key/status', importRoutes.getApiKeyStatus);
 }
