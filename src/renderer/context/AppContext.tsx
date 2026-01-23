@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
-import { hierarchyAPI, nodesAPI, searchAPI } from '../services/api';
+import { hierarchyAPI, nodesAPI, searchAPI, importAPI, settingsAPI } from '../services/api';
 
 // ============================================================
 // State Types
@@ -20,6 +20,7 @@ interface AppState {
   error: string | null;
   searchQuery: string;
   searchResults: any[];
+  importDialogOpen: boolean;
 }
 
 type AppAction =
@@ -32,7 +33,9 @@ type AppAction =
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_ERROR'; error: string | null }
   | { type: 'SET_SEARCH_QUERY'; query: string }
-  | { type: 'SET_SEARCH_RESULTS'; results: any[] };
+  | { type: 'SET_SEARCH_RESULTS'; results: any[] }
+  | { type: 'OPEN_IMPORT_DIALOG' }
+  | { type: 'CLOSE_IMPORT_DIALOG' };
 
 // ============================================================
 // Initial State
@@ -49,6 +52,7 @@ const initialState: AppState = {
   error: null,
   searchQuery: '',
   searchResults: [],
+  importDialogOpen: false,
 };
 
 // ============================================================
@@ -77,6 +81,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, searchQuery: action.query };
     case 'SET_SEARCH_RESULTS':
       return { ...state, searchResults: action.results };
+    case 'OPEN_IMPORT_DIALOG':
+      return { ...state, importDialogOpen: true };
+    case 'CLOSE_IMPORT_DIALOG':
+      return { ...state, importDialogOpen: false };
     default:
       return state;
   }
@@ -99,6 +107,11 @@ interface AppContextValue {
     toggleView: () => void;
     search: (query: string) => Promise<void>;
     refreshTree: () => Promise<void>;
+    importUrl: (url: string) => Promise<{ success: boolean; nodeId?: string; error?: string }>;
+    setApiKey: (apiKey: string) => Promise<void>;
+    checkApiKeyStatus: () => Promise<boolean>;
+    openImportDialog: () => void;
+    closeImportDialog: () => void;
   };
 }
 
@@ -211,6 +224,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await loadTree();
   }, [loadTree]);
 
+  const importUrl = useCallback(async (url: string) => {
+    try {
+      const result = await importAPI.importUrl(url);
+      if (result.success) {
+        // Refresh tree to show the new node
+        await loadTree();
+        // Select the newly imported node
+        if (result.nodeId) {
+          await selectNode(result.nodeId);
+        }
+      }
+      return result;
+    } catch (err) {
+      console.error('Import failed:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Import failed' };
+    }
+  }, [loadTree, selectNode]);
+
+  const setApiKey = useCallback(async (apiKey: string) => {
+    await settingsAPI.setApiKey(apiKey);
+  }, []);
+
+  const checkApiKeyStatus = useCallback(async () => {
+    const status = await settingsAPI.getApiKeyStatus();
+    return status.configured;
+  }, []);
+
+  const openImportDialog = useCallback(() => {
+    dispatch({ type: 'OPEN_IMPORT_DIALOG' });
+  }, []);
+
+  const closeImportDialog = useCallback(() => {
+    dispatch({ type: 'CLOSE_IMPORT_DIALOG' });
+  }, []);
+
   // Load initial data
   useEffect(() => {
     const initializeApp = async () => {
@@ -238,6 +286,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       toggleView,
       search,
       refreshTree,
+      importUrl,
+      setApiKey,
+      checkApiKeyStatus,
+      openImportDialog,
+      closeImportDialog,
     },
   };
 
