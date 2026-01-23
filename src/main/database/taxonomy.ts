@@ -131,17 +131,22 @@ export function getTree(view: HierarchyView, rootId?: string): TreeNode[] {
       ORDER BY n.function_position
     `).all() as Record<string, unknown>[];
 
-    return segments.map((row): TreeNode => {
-      const segmentCode = (row.function_code || 'A') as keyof typeof SEGMENT_COLORS;
-      return {
-        id: row.id as string,
-        title: row.title as string,
-        nodeType: 'segment',
-        color: SEGMENT_COLORS[segmentCode],
-        children: buildTree(row.id as string),
-        isExpanded: true,
-      };
-    });
+    if (segments.length > 0) {
+      return segments.map((row): TreeNode => {
+        const segmentCode = (row.function_code || 'A') as keyof typeof SEGMENT_COLORS;
+        return {
+          id: row.id as string,
+          title: row.title as string,
+          nodeType: 'segment',
+          color: SEGMENT_COLORS[segmentCode],
+          children: buildTree(row.id as string),
+          isExpanded: true,
+        };
+      });
+    }
+
+    // If no segments exist, show root-level items
+    return buildTree(null);
   } else {
     const organizations = db.prepare(`
       SELECT n.* FROM nodes n
@@ -150,14 +155,19 @@ export function getTree(view: HierarchyView, rootId?: string): TreeNode[] {
       ORDER BY n.organization_position
     `).all() as Record<string, unknown>[];
 
-    return organizations.map((row): TreeNode => ({
-      id: row.id as string,
-      title: row.title as string,
-      nodeType: 'organization',
-      color: 'blue', // Organizations use blue by default
-      children: buildTree(row.id as string),
-      isExpanded: true,
-    }));
+    if (organizations.length > 0) {
+      return organizations.map((row): TreeNode => ({
+        id: row.id as string,
+        title: row.title as string,
+        nodeType: 'organization',
+        color: 'blue', // Organizations use blue by default
+        children: buildTree(row.id as string),
+        isExpanded: true,
+      }));
+    }
+
+    // If no organizations exist, show root-level items
+    return buildTree(null);
   }
 }
 
